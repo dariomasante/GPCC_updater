@@ -3,7 +3,7 @@
   ## dario.masante@ext.ec.europa.eu (dario.masante@gmail.com)
   ## This set of functions starts a GUI to allow update of GPCC data.
   # TODO: harmonize working dirs; remember file choices;
-  # plot netcdf, head of data and summary on nulls etc. to console
+  # head of data and summary on nulls etc. to console
   
   # Install packages if not installed yet
   if(!require(ncdf4)) {utils::install.packages("ncdf4")}
