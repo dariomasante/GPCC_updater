@@ -338,6 +338,5 @@
  
 }
 
-save(.First, file = "GPCC_application_v2.RData")
 
 
