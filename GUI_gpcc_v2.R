@@ -107,7 +107,7 @@
         warning('The selected month (', paste(yr,mm,sep='-'),') was updated, but the following months are missing: ', 
                 paste(format(seq(firstMissing, by = "month", length.out = timeSlice - length(tm)), '%Y-%m'), collapse=', '))
         gmessage('The selected month (', paste(yr,mm,sep='-'),') was updated, but the following months are missing: ', 
-                paste(format(seq(firstMissing, by = "month", length.out = timeSlice - length(tm)), '%Y-%m'), collapse=', '))
+                 paste(format(seq(firstMissing, by = "month", length.out = timeSlice - length(tm)), '%Y-%m'), collapse=', '))
       }
       ncvar_put(target_nc, varid='time', vals=monthSince, timeSlice, 1) # Add month slice to time dimension
       nc_close(target_nc)
@@ -156,7 +156,7 @@
         return()
       }
     }
-
+    
     if(what=="First guess"){ # first guess db update ----
       library(R.utils)
       ## Download, unzip and extract data for selected month
@@ -188,7 +188,7 @@
         NgaugesNew = NgaugesNew[ ,ncol(NgaugesNew):1]
         nc_close(newData)
       }
-
+      
       # Write/update data in tabular database using the identifier
       newData = cbind(as.vector(t(prcpNew)), as.vector(t(NgaugesNew)))
       keepThese = which(newData[ ,1] != -99999.99 & !is.na(newData[ ,1])) # Identify rows with valid rainfall data (including zero)
@@ -218,7 +218,7 @@
           new = new[ ,ncol(new):1] # Revert columns to match netcdf format
           newData[ ,i] = as.numeric(t(new)) # Reorder table data to match identifier in oracle database below
         }
-
+        
         # Write/update data in tabular database using the identifier
         keepThese = which(newData[ ,1] != -99999.99) # Identify rows with valid rainfall data (including zero)
         good_vs_NA = data.frame(Valid_Records=length(keepThese), Null_records=nrow(newData)-length(keepThese))
@@ -233,8 +233,9 @@
     return(dwn)
   }
 
+
   ## Start up the GUI ----
-  runTheGui <- function(){
+  GUI = function(){
     win = gwindow("GPCC data updater", visible = FALSE)
     titleFrame = gframe("", container = win)
     glabel("This application downloads and stores data from GPCC. \nPlease follow execution and messages on the R console", 
@@ -243,13 +244,13 @@
     lastMonth = as.integer(format(Sys.Date(), "%m")) - 1
     lastMonth = ifelse(lastMonth == 0, 12, lastMonth)
     currentYear = ifelse(lastMonth == 12, as.integer(format(Sys.Date(), "%Y")) - 1, as.integer(format(Sys.Date(), "%Y")))
-
+    
     periodFrame = gframe("Select month of interest", container = win)
     yr_lbl = glabel("Year: ", container = periodFrame)
     yr_txt = gedit(currentYear, container = periodFrame, width=5)
     mm_lbl = glabel("          Month: ", container = periodFrame)
     mm_sel = gdroplist(1:12, selected=lastMonth, container = periodFrame)
-        
+    
     #yr_sld <- gslider(from=1982, to = currentYear, by =1, value=currentYear, container=periodFrame)
     
     whichFrame = gframe("What GPCC data to use?", container = win)
@@ -257,14 +258,14 @@
     what_chk = gradio(ticklist_what, container=whichFrame, checked=FALSE)
     
     upFrame = gframe("What would you like to update?", container = win, horizontal=FALSE)
-
+    
     ticklist = c("Netcdf file","Database")
     chk_sel = gcheckboxgroup(ticklist, container=upFrame, checked=TRUE)
     
     target_lbl = glabel('\nTarget netcdf file (.nc): ', container = upFrame)
     target_netcdf = gfilebrowse(text = '', type = "open", quote = TRUE, 
-                             container = upFrame, toolkit = guiToolkit(), width = 35) 
-
+                                container = upFrame, toolkit = guiToolkit(), width = 35) 
+    
     db_lbl = glabel('\nDatabase: ', container = upFrame)
     target_db = gedit('', container = upFrame)
     user_lbl = glabel('Username: ', container = upFrame)
@@ -274,69 +275,73 @@
     visible(pass_db) = FALSE 
     
     glabel(" ", container = win)
-
+    
     # Run button ----
     btnCalc = gbutton("\nRun\n", container = win, handler = function(h, ...) {
-                         cat('\nStarted...\n')
-                         yr = as.integer(svalue(yr_txt))
-                         mm = svalue(mm_sel)
-                         what = svalue(what_chk)
-                         chk = svalue(chk_sel)
-                         tnc = svalue(target_netcdf)
-                         if(length(what) == 0){
-                           gmessage("Please select at least one GPCC product (First guess or Monitoring v4)")
-                           stop("Please select at least one GPCC product (First guess, Monitoring v4)")
-                           #return()
-                         }
-                         if(length(chk) == 0){
-                           gmessage("Please select at least one item to update (netcdf or database)")
-                           stop("Please select at least one item to update (netcdf or database)")
-                           #return()
-                         }
-                         if(ticklist[1] %in% chk){
-                           if(nchar(tnc) == 0){
-                             gmessage("Please add the target netcdf to update.")
-                             stop("The target netcdf to update is missing.")
-                             #return()
-                           }
-                           library(ncdf4)
-                           cat('Updating netcdf file...\n')
-                           # download_gpcc Avoids downloading the same data twice in the same run
-                           download_gpcc = netcdf_update(target_nc=tnc, what, yr, mm)
-                         }
-                         if(ticklist[2] %in% chk){
-                           tdb = svalue(target_db)
-                           udb = svalue(user_db)
-                           pdb = svalue(pass_db)
-                           if(nchar(tdb) == 0 | nchar(pdb) == 0 | nchar(udb) == 0){
-                             gmessage("Please specify database to update, user and password.")
-                             stop("Database input, user and/or password are are missing.")
-                             #return()
-                           }
-                           cat('Updating database...\n')
-                           library(RODBC)
-                           if(!exists('download_gpcc')){
-                             download_gpcc = FALSE
-                           }
-                           download_gpcc = db_update(db=tdb, what, yr, mm, 
-                                     username=udb, password=pdb, dwn=download_gpcc)
-                         }
-                         file.remove(download_gpcc)
-                         rm(download_gpcc) # unnecessary
-                         cat('Execution completed.\n')
-                       }
-               )
-
+      cat('\nStarted...\n')
+      yr = as.integer(svalue(yr_txt))
+      mm = svalue(mm_sel)
+      what = svalue(what_chk)
+      chk = svalue(chk_sel)
+      tnc = svalue(target_netcdf)
+      if(length(what) == 0){
+        gmessage("Please select at least one GPCC product (First guess or Monitoring v4)")
+        stop("Please select at least one GPCC product (First guess, Monitoring v4)")
+        #return()
+      }
+      if(length(chk) == 0){
+        gmessage("Please select at least one item to update (netcdf or database)")
+        stop("Please select at least one item to update (netcdf or database)")
+        #return()
+      }
+      if(ticklist[1] %in% chk){
+        if(nchar(tnc) == 0){
+          gmessage("Please add the target netcdf to update.")
+          stop("The target netcdf to update is missing.")
+          #return()
+        }
+        library(ncdf4)
+        cat('Updating netcdf file...\n')
+        # download_gpcc Avoids downloading the same data twice in the same run
+        download_gpcc = netcdf_update(target_nc=tnc, what, yr, mm)
+      }
+      if(ticklist[2] %in% chk){
+        tdb = svalue(target_db)
+        udb = svalue(user_db)
+        pdb = svalue(pass_db)
+        if(nchar(tdb) == 0 | nchar(pdb) == 0 | nchar(udb) == 0){
+          gmessage("Please specify database to update, user and password.")
+          stop("Database input, user and/or password are are missing.")
+          #return()
+        }
+        cat('Updating database...\n')
+        library(RODBC)
+        if(!exists('download_gpcc')){
+          download_gpcc = FALSE
+        }
+        download_gpcc = db_update(db=tdb, what, yr, mm, 
+                                  username=udb, password=pdb, dwn=download_gpcc)
+      }
+      file.remove(download_gpcc)
+      rm(download_gpcc) # unnecessary
+      cat('Execution completed.\n')
+    }
+    )
+    
     glabel(" ", container = win)
-
+    
     btnExit = gbutton("Cancel", handler = function(h,...) dispose(win), container=win)
     
     visible(win) = TRUE
     focus(win)
   }
-  gui <<- runTheGui()
- 
+  
+  GUI()
+  
 }
 
+GPCC_updater = .First # to make the function visible in the global environment
 
+#save(.First, GPCC_updater, file = "GPCC_application_v2.RData")
 
+###### END
