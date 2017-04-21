@@ -2,6 +2,14 @@
   ## Dario Masante - March 2017
   ## dario.masante@ext.ec.europa.eu (dario.masante@gmail.com)
   ## This set of functions starts a GUI to allow update of GPCC data.
+  ## GPCC_updater
+  ## Downloads GPCC data and updates netcdf files and database, via a user-friendly GUI (point and click), 
+  ## powered by the gWidgets package for R and relying solely on R installation. 
+  ## Provided that R is already installed and that .RData files are opened with it by default, 
+  ## double clicking the RData file will start up the application. No code typing whatsoever is required.
+  ## A function wrapping up the application is loaded and visible in the R global environment as well, 
+  ## allowing the application to be started in an already open R session.
+  
   # TODO: harmonize working dirs; remember file choices;
   # head of data and summary on nulls etc. to console
   
@@ -129,6 +137,8 @@
         insertString = paste('insert into GRID_1DD_GPCC (G1D_ID, YEAR,',
                              paste(vars, mm, collapse=',', sep='_'),
                              ') values (', valString,')')
+        #insertString = sprintf('insert into GRID_1DD_GPCC (G1D_ID, YEAR, %s) values ( %s)', 
+        #                       paste(vars, mm, collapse=',', sep='_'), valString)
         sqlQuery(ch, insertString)
       } else {
         valString = paste(paste(vars, mm, sep='_'), newData[x, ], sep='=', collapse=', ')
@@ -255,7 +265,7 @@
     
     whichFrame = gframe("What GPCC data to use?", container = win)
     ticklist_what = c("First guess", "Monitoring (v4)")
-    what_chk = gradio(ticklist_what, container=whichFrame, checked=FALSE)
+    what_chk = gradio(ticklist_what, container=whichFrame)
     
     upFrame = gframe("What would you like to update?", container = win, horizontal=FALSE)
     
@@ -263,9 +273,9 @@
     chk_sel = gcheckboxgroup(ticklist, container=upFrame, checked=TRUE)
     
     target_lbl = glabel('\nTarget netcdf file (.nc): ', container = upFrame)
-    target_netcdf = gfilebrowse(text = '', type = "open", quote = TRUE, 
-                                container = upFrame, toolkit = guiToolkit(), width = 35) 
-    
+    target_netcdf = gfilebrowse(text = '', type = "open", quote = TRUE, filter = list("All files"=list(patterns='*.nc')),
+                               container = upFrame, toolkit = guiToolkit(), width = 35) 
+
     db_lbl = glabel('\nDatabase: ', container = upFrame)
     target_db = gedit('', container = upFrame)
     user_lbl = glabel('Username: ', container = upFrame)
@@ -284,11 +294,6 @@
       what = svalue(what_chk)
       chk = svalue(chk_sel)
       tnc = svalue(target_netcdf)
-      if(length(what) == 0){
-        gmessage("Please select at least one GPCC product (First guess or Monitoring v4)")
-        stop("Please select at least one GPCC product (First guess, Monitoring v4)")
-        #return()
-      }
       if(length(chk) == 0){
         gmessage("Please select at least one item to update (netcdf or database)")
         stop("Please select at least one item to update (netcdf or database)")
