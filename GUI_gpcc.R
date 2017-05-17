@@ -1,5 +1,5 @@
 .First <- function(){
-  ## Dario Masante - March 2017
+  ## Dario Masante - May 2017
   ## dario.masante@ext.ec.europa.eu (dario.masante@gmail.com)
   ## This set of functions starts a GUI to allow update of GPCC data.
   ## GPCC_updater
@@ -10,7 +10,7 @@
   ## A function wrapping up the application is loaded and visible in the R global environment as well, 
   ## allowing the application to be started in an already open R session.
   
-  # TODO: add preview; remember file choices;
+  # TODO: add map preview; remember file choices
   
   # Install packages if not installed yet
   if(!require(ncdf4)) {utils::install.packages("ncdf4")}
@@ -22,16 +22,20 @@
   
   ## Declare functions 
   # Download function for first guess
-  download_and_check = function(nc){
-    gz = basename(nc)
-    download.file(nc, gz)
+  download_and_check = function(nc_link){
+    gz = basename(nc_link)
+    download.file(nc_link, gz)
     if(file.info(gz)$size < 1000){
-      file.remove(gz)
-      gmessage('Selected period not available from GPCC. \nPlease double check at ftp://ftp.dwd.de/pub/data/gpcc/')
-      stop('Selected period not available from GPCC - Please double check at ftp://ftp.dwd.de/pub/data/gpcc/')
+      remove_unavailable(gz)
     } else {
       gunzip(gz, overwrite=TRUE)
     }
+  }
+  
+  remove_unavailable = function(zipfile){
+    file.remove(zipfile)
+    gmessage("Selected month or data version 4 not available from GPCC.\nPlease double check at:  ftp://ftp.dwd.de/pub/data/gpcc/")
+    stop('Selected month or data version 4 not available from GPCC.\nPlease double check at:  ftp://ftp.dwd.de/pub/data/gpcc/')
   }
   
   # netcdf_update
@@ -45,7 +49,7 @@
     existingMonths = paste(1901 + dy, dm, sep='-') # !!Origin year date is hardcoded (January 1901)!!
     requestedMonth = paste(yr,mm,sep='-')
     if(requestedMonth %in% existingMonths){
-      warning('Selected period is already present in the target netcdf file.')
+      warning('Selected month is already present in the target netcdf file.')
       conf = gconfirm("The month you requested is present in target netcdf already. \n\nWould you like to replace it?\n")
       if(conf){
         timeSlice = which(requestedMonth == existingMonths)
@@ -103,10 +107,9 @@
       gz = basename(src_data)
       download.file(src_data, gz)
       if(file.info(gz)$size < 1000){
-        file.remove(gz)
-        nc_close(target_nc)
-        gmessage("Selected period not available from GPCC - Please double check at ftp://ftp.dwd.de/pub/data/gpcc/")
-        stop('Selected period not available from GPCC - Please double check at ftp://ftp.dwd.de/pub/data/gpcc/')
+        remove_unavailable(gz)
+      } else if(!paste0('gpcc_10_',mm,yr,'_monitoring_product_v4') %in% unzip(gz, list = TRUE)[,1]){
+        remove_unavailable(gz)
       } else {
         # Read in the selected period and iterate to copy all variables into archive netcdf
         newData = read.table(unz(gz, paste0('gpcc_10_',mm,yr,'_monitoring_product_v4')), skip = 25, sep = "") # Read ascii removing header
@@ -122,6 +125,7 @@
         }
       }
     }
+    
     if(postpone_message){
       #ncvar_put(target_nc, varid='time', vals=(max(tm):monthSince)[-1], length(existingMonths)+1, timeSlice-length(existingMonths)) # Add month slice to time dimension
       ncvar_put(target_nc, varid='time', vals=c(rep(NA,monthSince - max(tm) -1),monthSince), 
@@ -220,7 +224,7 @@
       # Write/update data in tabular database using the identifier
       newData = cbind(as.vector(t(prcpNew)), as.vector(t(NgaugesNew)))
       keepThese = which(newData[ ,1] != -99999.99 & !is.na(newData[ ,1])) # Identify rows with valid rainfall data (including zero)
-      good_vs_NA = data.frame(Valid_Records=length(keepThese), Null_records=nrow(newData)-length(keepThese))
+      #good_vs_NA = data.frame(Valid_Records=length(keepThese), Null_records=nrow(newData)-length(keepThese))
       newData = newData[keepThese, ] # Remove rows with NULL values in rainfall data
       ID = (1:(360*180))[keepThese] # Identifier to interact with Oracle database (it's sorted accordingly)
       vars = c('GUESS_RAIN','GUESS_GAUGES')
@@ -235,9 +239,9 @@
         download.file(src_data, dwn)
       }
       if(file.info(dwn)$size < 1000){
-        file.remove(dwn)
-        gmessage('Selected period not available from GPCC. \nPlease double check at ftp://ftp.dwd.de/pub/data/gpcc/')
-        stop('Selected period not available from GPCC - Please double check at ftp://ftp.dwd.de/pub/data/gpcc/')
+        remove_unavailable(dwn)
+      } else if(!paste0('gpcc_10_',mm,yr,'_monitoring_product_v4') %in% unzip(gz, list = TRUE)[,1]){
+        remove_unavailable(dwn)
       } else {
         # Read in the selected period and iterate to copy all variables into archive db
         newData = read.table(unz(dwn, paste0('gpcc_10_',mm,yr,'_monitoring_product_v4')), skip = 25, sep = "") # Read ascii removing header
@@ -249,7 +253,7 @@
         
         # Write/update data in tabular database using the identifier
         keepThese = which(newData[ ,1] != -99999.99) # Identify rows with valid rainfall data (including zero)
-        good_vs_NA = data.frame(Valid_Records=length(keepThese), Null_records=nrow(newData)-length(keepThese))
+        #good_vs_NA = data.frame(Valid_Records=length(keepThese), Null_records=nrow(newData)-length(keepThese))
         newData = newData[keepThese, ] # Remove rows with NULL values in rainfall data
         ID = (1:(360*180))[keepThese] # Identifier to interact with Oracle database (it's sorted accordingly)
         vars = c('MON_RAIN','MON_GAUGES','MON_SOLID','MON_LIQUID','MON_GAUGE_ERROR','MON_GAUGE_PERC','MON_GAUGE_CORR')
@@ -258,7 +262,7 @@
     }
     close(ch)
     cat('\nDatabase successfully updated.\n')
-    return(dwn)
+    return(paste0(getwd(),'/',dwn))
   }
 
 
@@ -333,15 +337,14 @@
         udb = svalue(user_db)
         pdb = svalue(pass_db)
         if(nchar(tdb) == 0 | nchar(pdb) == 0 | nchar(udb) == 0){
+          tryCatch(file.remove(download_gpcc), error=function(e){})
           gmessage("Please specify database to update, user and password.")
           stop("Database input, user and/or password are are missing.")
           #return()
         }
         cat('Updating database...\n')
         library(RODBC)
-        if(!exists('download_gpcc')){
-          download_gpcc = FALSE
-        }
+        download_gpcc = ifelse(exists('download_gpcc'), download_gpcc, FALSE)
         download_gpcc = db_update(db=tdb, what, yr, mm, 
                                   username=udb, password=pdb, dwn=download_gpcc)
       }
