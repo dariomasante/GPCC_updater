@@ -10,8 +10,7 @@
   ## A function wrapping up the application is loaded and visible in the R global environment as well, 
   ## allowing the application to be started in an already open R session.
   
-  # TODO: harmonize working dirs; remember file choices;
-  # head of data and summary on nulls etc. to console
+  # TODO: add preview; remember file choices;
   
   # Install packages if not installed yet
   if(!require(ncdf4)) {utils::install.packages("ncdf4")}
@@ -57,7 +56,7 @@
       }
     } else {
       monthSince = (yr - 1901) * 12 + as.numeric(mm) - 1
-      timeSlice = monthSince - min(tm) + 1
+      timeSlice = monthSince - min(tm, na.rm = TRUE) + 1
       # Check if any months before the selected period were not updated. 
       postpone_message = ifelse(timeSlice - length(tm) > 1, TRUE, FALSE)
     }
@@ -91,6 +90,12 @@
       ## Add or update selected slice to existing target netcdf
       ncvar_put(target_nc, varid='prcp', vals=prcpNew, start=c(1,1,1,timeSlice), count=c(360,180,1,1)) 
       ncvar_put(target_nc, varid='numStations', vals=NgaugesNew, start=c(1,1,1,timeSlice), count=c(360,180,1,1))
+      summaryList = lapply(list(prcpNew, NgaugesNew), function(x) {
+        smm = as.vector(x)
+        smm[smm < -9998] = NA
+        summary(smm)
+      })
+      names(summaryList) = names(target_nc$var)
     }
     
     if(what == "Monitoring (v4)"){ # monitoring netcdf update ----
@@ -105,23 +110,34 @@
       } else {
         # Read in the selected period and iterate to copy all variables into archive netcdf
         newData = read.table(unz(gz, paste0('gpcc_10_',mm,yr,'_monitoring_product_v4')), skip = 25, sep = "") # Read ascii removing header
+        summaryList = list()
         for(i in 1:ncol(newData)){
           new = matrix(newData[ ,i], nc=180)
           new = new[ ,ncol(new):1] # Revert columns to match netcdf format
           nm = names(target_nc$var)[i]
-          ncvar_put(target_nc, varid=nm, vals=new, start=c(1,1,1,timeSlice), count=c(360,180,1,1)) 
+          ncvar_put(target_nc, varid=nm, vals=new, start=c(1,1,1,timeSlice), count=c(360,180,1,1))
+          smm = as.vector(new)
+          smm[smm < -9998] = NA
+          summaryList[[nm]] = summary(smm)
         }
       }
-      if(postpone_message){
-        firstMissing = as.Date(paste0(existingMonths[length(existingMonths)], '-28')) + 5 # Ensures the first missing date is taken from the last available
-        warning('The selected month (', paste(yr,mm,sep='-'),') was updated, but the following months are missing: ', 
-                paste(format(seq(firstMissing, by = "month", length.out = timeSlice - length(tm) - 1), '%Y-%m'), collapse=', '))
-        gmessage('The selected month (', paste(yr,mm,sep='-'),') was updated, but the following months are missing: ', 
-                 paste(format(seq(firstMissing, by = "month", length.out = timeSlice - length(tm) - 1), '%Y-%m'), collapse=', '))
-      }
+    }
+    if(postpone_message){
+      #ncvar_put(target_nc, varid='time', vals=(max(tm):monthSince)[-1], length(existingMonths)+1, timeSlice-length(existingMonths)) # Add month slice to time dimension
+      ncvar_put(target_nc, varid='time', vals=c(rep(NA,monthSince - max(tm) -1),monthSince), 
+                length(existingMonths)+1, timeSlice-length(existingMonths)) # Add month slice to time dimension
+      
+      firstMissing = as.Date(paste0(existingMonths[length(existingMonths)], '-28')) + 5 # Ensures the first missing date is taken from the last available
+      warning('The selected month (', paste(yr,mm,sep='-'),') was updated, but the following months are missing: ', 
+              paste(format(seq(firstMissing, by = "month", length.out = timeSlice - length(tm) - 1), '%Y-%m'), collapse=', '))
+      gmessage(paste('The selected month (', paste(yr,mm,sep='-'),') was updated, but the following months are missing: ', 
+               paste(format(seq(firstMissing, by = "month", length.out = timeSlice - length(tm) - 1), '%Y-%m'), collapse=', ')))
+    } else {
       ncvar_put(target_nc, varid='time', vals=monthSince, timeSlice, 1) # Add month slice to time dimension
     }
     nc_close(target_nc)
+    
+    print(summaryList)
     cat('Netcdf file successfully updated.\n\n')
     return(paste0(getwd(),'/',gz))
   }
@@ -349,6 +365,6 @@
 
 GPCC_updater = .First # to make the function visible in the global environment
 
-#save(.First, GPCC_updater, file = "GPCC_application_v2.RData")
+#save(.First, GPCC_updater, file = "GPCC_application.RData")
 
 ###### END
