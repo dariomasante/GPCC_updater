@@ -32,34 +32,37 @@
     }
   }
   
+  # File remover when date is not available
   remove_unavailable = function(zipfile){
     file.remove(zipfile)
     gmessage("Selected month or data version 4 not available from GPCC.\nPlease double check at:  ftp://ftp.dwd.de/pub/data/gpcc/")
     stop('Selected month or data version 4 not available from GPCC.\nPlease double check at:  ftp://ftp.dwd.de/pub/data/gpcc/')
   }
   
-  # netcdf_update
+  ## Updates target netcdf, returning a token (downloaded file)
   netcdf_update = function(target, what, yr, mm){
-    ## Retrieve monthly data from GPCC and check whether it exists in target netcdf
+    # Retrieve monthly data from GPCC and check whether it exists in target netcdf
     mm = ifelse(mm %in% 1:9, paste0('0', mm), mm) # Make sure month string has the zero ahead
     target_nc = nc_open(target, write=TRUE) # open target netcdf
     tm = ncvar_get(target_nc, 'time') # Get time data
     dy = floor(tm / 12) # get years since origin
     dm = tm - 12 * dy + 1; dm = ifelse(dm %in% 1:9, paste0('0', dm), dm) # get months since origin
-    existingMonths = paste(1901 + dy, dm, sep='-') # !!Origin year date is hardcoded (January 1901)!!
-    requestedMonth = paste(yr,mm,sep='-')
+    org = as.Date(strsplit(target_nc$dim$time$units, ' ')[[1]][3]) # get origin date (15 January 1901)
+    existingMonths = paste(as.integer(format(org, '%Y')) + dy, dm, sep='-') # get (formatted) months currently in target netcdf
+    requestedMonth = paste(yr,mm,sep='-') # make a formatted string for requested month
+    # Condition to assign time slice to add/edit
     if(requestedMonth %in% existingMonths){
       warning('Selected month is already present in the target netcdf file.')
       conf = gconfirm("The month you requested is present in target netcdf already. \n\nWould you like to replace it?\n")
       if(conf){
-        timeSlice = which(requestedMonth == existingMonths)
+        timeSlice = which(requestedMonth == existingMonths) 
         monthSince = tm[timeSlice]
         postpone_message = FALSE
       } else {
-        return()
+        return() # required to keep the application running out of the function
       }
     } else {
-      monthSince = (yr - 1901) * 12 + as.numeric(mm) - 1
+      monthSince = (yr - as.integer(format(org, '%Y'))) * 12 + as.numeric(mm) - 1
       timeSlice = monthSince - min(tm, na.rm = TRUE) + 1
       # Check if any months before the selected period were not updated. 
       postpone_message = ifelse(timeSlice - length(tm) > 1, TRUE, FALSE)
@@ -74,6 +77,7 @@
         download_and_check(src_nc)
         gz = gsub('.gz','',basename(src_nc))
         newData = read.table(gz, skip = 8, sep = "") # Read ascii removing header 
+        newData[newData < 0] = NA # target_nc$var$p$missval in netcdf
         prcp = newData[ ,1]
         prcpNew = matrix(prcp, nc=180)
         prcpNew = prcpNew[ ,ncol(prcpNew):1] # flip matrix to match netcdf format
@@ -92,14 +96,12 @@
         nc_close(newData)
       }
       ## Add or update selected slice to existing target netcdf
-      ncvar_put(target_nc, varid='prcp', vals=prcpNew, start=c(1,1,1,timeSlice), count=c(360,180,1,1)) 
-      ncvar_put(target_nc, varid='numStations', vals=NgaugesNew, start=c(1,1,1,timeSlice), count=c(360,180,1,1))
       summaryList = lapply(list(prcpNew, NgaugesNew), function(x) {
-        smm = as.vector(x)
-        smm[smm < -9998] = NA
-        summary(smm)
+        summary(as.vector(x))
       })
       names(summaryList) = names(target_nc$var)
+      ncvar_put(target_nc, varid='prcp', vals=prcpNew, start=c(1,1,1,timeSlice), count=c(360,180,1,1)) 
+      ncvar_put(target_nc, varid='numStations', vals=NgaugesNew, start=c(1,1,1,timeSlice), count=c(360,180,1,1))
     }
     
     if(what == "Monitoring (v4)"){ # monitoring netcdf update ----
@@ -113,24 +115,22 @@
       } else {
         # Read in the selected period and iterate to copy all variables into archive netcdf
         newData = read.table(unz(gz, paste0('gpcc_10_',mm,yr,'_monitoring_product_v4')), skip = 25, sep = "") # Read ascii removing header
+        newData[newData < 0] = NA # substitute fill values with NA
         summaryList = list()
         for(i in 1:ncol(newData)){
           new = matrix(newData[ ,i], nc=180)
           new = new[ ,ncol(new):1] # Revert columns to match netcdf format
           nm = names(target_nc$var)[i]
+          summaryList[[nm]] = summary(as.vector(new))
           ncvar_put(target_nc, varid=nm, vals=new, start=c(1,1,1,timeSlice), count=c(360,180,1,1))
-          smm = as.vector(new)
-          smm[smm < -9998] = NA
-          summaryList[[nm]] = summary(smm)
         }
       }
     }
     
+    ## Condition to check whether there are any missing months in between requested date, then updates time dimension
     if(postpone_message){
-      #ncvar_put(target_nc, varid='time', vals=(max(tm):monthSince)[-1], length(existingMonths)+1, timeSlice-length(existingMonths)) # Add month slice to time dimension
       ncvar_put(target_nc, varid='time', vals=c(rep(NA,monthSince - max(tm) -1),monthSince), 
                 length(existingMonths)+1, timeSlice-length(existingMonths)) # Add month slice to time dimension
-      
       firstMissing = as.Date(paste0(existingMonths[length(existingMonths)], '-28')) + 5 # Ensures the first missing date is taken from the last available
       warning('The selected month (', paste(yr,mm,sep='-'),') was updated, but the following months are missing: ', 
               paste(format(seq(firstMissing, by = "month", length.out = timeSlice - length(tm) - 1), '%Y-%m'), collapse=', '))
@@ -142,8 +142,9 @@
     nc_close(target_nc)
     
     print(summaryList)
-    cat('Netcdf file successfully updated.\n\n')
-    return(paste0(getwd(),'/',gz))
+    requestedMonth = format(as.Date(paste(requestedMonth,"-15",sep="")), '%B %Y') # Convert month string into plain text
+    cat('Netcdf successfully updated in time slot number', timeSlice, ', corresponding to ', requestedMonth, '\n\n')
+    return(paste0(getwd(),'/',gz)) # Pass downloaded file name to application
   }
   
   
@@ -157,8 +158,7 @@
       if(ddarray == 0){
         valString = paste(ID[x], yr, paste(newData[x, ], collapse=','), sep=',')
         insertString = paste('insert into GRID_1DD_GPCC (G1D_ID, YEAR,',
-                             paste(vars, mm, collapse=',', sep='_'),
-                             ') values (', valString,')')
+                             paste(vars, mm, collapse=',', sep='_'), ') values (', valString,')')
         #insertString = sprintf('insert into GRID_1DD_GPCC (G1D_ID, YEAR, %s) values ( %s)', 
         #                       paste(vars, mm, collapse=',', sep='_'), valString)
         sqlQuery(ch, insertString)
@@ -185,7 +185,7 @@
       conf = gconfirm("The month you requested is present in target database already. \n\nWould you like to replace it?\n")
       warning("The requested month is present in target database already.")
       if(!conf){
-        return()
+        return() # required to keep the application running out of the function
       }
     }
     
@@ -297,7 +297,7 @@
     target_lbl = glabel('\nTarget netcdf file (.nc): ', container = upFrame)
     target_netcdf = gfilebrowse(text = '', type = "open", quote = TRUE, filter = list("All files"=list(patterns='*.nc')),
                                container = upFrame, toolkit = guiToolkit(), width = 35) 
-
+    # Database inputs
     db_lbl = glabel('\nDatabase: ', container = upFrame)
     target_db = gedit('', container = upFrame)
     user_lbl = glabel('Username: ', container = upFrame)
@@ -321,7 +321,7 @@
         stop("No item to update was specified (netcdf or database)")
         #return()
       }
-      if(ticklist[1] %in% chk){
+      if(ticklist[1] %in% chk){ # When netcdf is selected
         if(nchar(tnc) == 0){
           gmessage("Please add the target netcdf to update.")
           stop("The target netcdf to update is missing.")
@@ -329,10 +329,10 @@
         }
         library(ncdf4)
         cat('Updating netcdf file...\n')
-        # download_gpcc Avoids downloading the same data twice in the same run
+        # 'download_gpcc' avoids downloading the same data twice if database is selected too
         download_gpcc = netcdf_update(target=tnc, what, yr, mm)
       }
-      if(ticklist[2] %in% chk){
+      if(ticklist[2] %in% chk){ # When database is selected
         tdb = svalue(target_db)
         udb = svalue(user_db)
         pdb = svalue(pass_db)
@@ -366,8 +366,8 @@
   
 }
 
-GPCC_updater = .First # to make the function visible in the global environment
+GPCC_updater = .First # to make the function visible in the global environment as 'GPCC_updater'
 
-#save(.First, GPCC_updater, file = "GPCC_application.RData")
+save(.First, GPCC_updater, file = "GPCC_application.RData") # Save as executable RData
 
 ###### END
