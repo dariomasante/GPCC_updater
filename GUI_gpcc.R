@@ -240,7 +240,7 @@
       }
       if(file.info(dwn)$size < 1000){
         remove_unavailable(dwn)
-      } else if(!paste0('gpcc_10_',mm,yr,'_monitoring_product_v4') %in% unzip(gz, list = TRUE)[,1]){
+      } else if(!paste0('gpcc_10_',mm,yr,'_monitoring_product_v4') %in% unzip(dwn, list = TRUE)[,1]){
         remove_unavailable(dwn)
       } else {
         # Read in the selected period and iterate to copy all variables into archive db
