@@ -148,7 +148,7 @@
   }
   
   
-  submit_query = function(vars, ID, what, yr, mm, ch, newData){
+  submit_query = function(vars, ID, yr, mm, ch, newData){
     # Add each variable to the oracle database 
     cat('Looping trough values.\nThis may take a few minutes and freeze the GUI until finished.\n')
     lgt = length(ID)
