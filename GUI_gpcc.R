@@ -8,11 +8,11 @@
   ## Provided that R is already installed and that .RData files are opened with it by default, 
   ## double clicking the RData file will start up the application. No code typing whatsoever is required.
   ## A function wrapping up the application is loaded and visible in the R global environment as well, 
-  ## allowing the application to be started in an already open R session.
+  ## allowing the application to be started in an already open R session: GPCC_updater()
   
   # TODO: add map preview; remember file choices
   
-  # Install packages if not installed yet
+  # Install packages if not installed yet, then load
   if(!require(ncdf4)) {utils::install.packages("ncdf4")}
   if(!require(RODBC)) {utils::install.packages("RODBC")}
   if(!require(gWidgets)) {utils::install.packages("gWidgets")}
@@ -21,25 +21,29 @@
   library(gWidgets)
   
   ## Declare functions 
-  # Download function for first guess
+  ## Function to download data for first guess
+  # nc_link: url to the gpcc data (both netcdf or ascii)
   download_and_check = function(nc_link){
     gz = basename(nc_link)
     download.file(nc_link, gz)
-    if(file.info(gz)$size < 1000){
+    if(file.info(gz)$size < 1000){ # Check if file is smaller than 1000 byte: empty file
       remove_unavailable(gz)
     } else {
       gunzip(gz, overwrite=TRUE)
     }
   }
   
-  # File remover when date is not available
+  ## File remover when requested date is not available
   remove_unavailable = function(zipfile){
     file.remove(zipfile)
     gmessage("Selected month or data version 4 not available from GPCC.\nPlease double check at:  ftp://ftp.dwd.de/pub/data/gpcc/")
     stop('Selected month or data version 4 not available from GPCC.\nPlease double check at:  ftp://ftp.dwd.de/pub/data/gpcc/')
   }
   
-  ## Updates target netcdf, returning a token (downloaded file)
+  ## This function updates the target netcdf, returning a token (downloaded file)
+  # target: target netcdf to be updated
+  # what: monitoring (v4) or first guess?
+  # yr, mm: year YYYY, month MM
   netcdf_update = function(target, what, yr, mm){
     # Retrieve monthly data from GPCC and check whether it exists in target netcdf
     mm = ifelse(mm %in% 1:9, paste0('0', mm), mm) # Make sure month string has the zero ahead
@@ -55,14 +59,14 @@
       warning('Selected month is already present in the target netcdf file.')
       conf = gconfirm("The month you requested is present in target netcdf already. \n\nWould you like to replace it?\n")
       if(conf){
-        timeSlice = which(requestedMonth == existingMonths) 
+        timeSlice = which(requestedMonth == existingMonths)  # Get index of month to overwrite
         monthSince = tm[timeSlice]
         postpone_message = FALSE
       } else {
-        return() # required to keep the application running out of the function
+        return() # Do nothing; this is required to keep the application running out of the function
       }
     } else {
-      monthSince = (yr - as.integer(format(org, '%Y'))) * 12 + as.numeric(mm) - 1
+      monthSince = (yr - as.integer(format(org, '%Y'))) * 12 + as.integer(mm) - 1
       timeSlice = monthSince - min(tm, na.rm = TRUE) + 1
       # Check if any months before the selected period were not updated. 
       postpone_message = ifelse(timeSlice - length(tm) > 1, TRUE, FALSE)
@@ -76,31 +80,32 @@
         src_nc = paste0('ftp://ftp.dwd.de/pub/data/gpcc/first_guess/', yr, '/gpcc_first_guess_', mm, '_', yr, '.gz')
         download_and_check(src_nc)
         gz = gsub('.gz','',basename(src_nc))
-        newData = read.table(gz, skip = 8, sep = "") # Read ascii removing header 
-        newData[newData < 0] = NA # target_nc$var$p$missval in netcdf
-        prcp = newData[ ,1]
-        prcpNew = matrix(prcp, nc=180)
+        newData = read.table(gz, skip = 8, sep = "") # Read ascii removing header (first 8 rows)
+        newData[newData < 0] = NA # Substitute negative values (i.e. missing values) with NA (target_nc$var$p$missval in netcdf)
+        prcp = newData[ ,1] # Vector of precipitation values
+        prcpNew = matrix(prcp, nc=180) # make a matrix /grid of precip. values
         prcpNew = prcpNew[ ,ncol(prcpNew):1] # flip matrix to match netcdf format
-        Ngauges = newData[ ,2]
-        NgaugesNew = matrix(Ngauges, nc=180)
-        NgaugesNew = NgaugesNew[ ,ncol(NgaugesNew):1]
+        Ngauges = newData[ ,2] # Vector of gauges info
+        NgaugesNew = matrix(Ngauges, nc=180) # make matrix
+        NgaugesNew = NgaugesNew[ ,ncol(NgaugesNew):1] # flip
       } else {
         src_nc = paste0('ftp://ftp.dwd.de/pub/data/gpcc/first_guess/', yr, '/first_guess_monthly_', yr, '_', mm, '.nc.gz')
         download_and_check(src_nc)
         gz = gsub('.gz','',basename(src_nc))
-        newData = nc_open(gz)
-        prcpNew = ncvar_get(newData, 'p')
+        newData = nc_open(gz) # Open downloaded and unzipped netcdf
+        prcpNew = ncvar_get(newData, 'p') # Extract precipitation values as matrix
         prcpNew = prcpNew[ ,ncol(prcpNew):1]  # flip matrix to match netcdf format
-        NgaugesNew = ncvar_get(newData, 's')
-        NgaugesNew = NgaugesNew[ ,ncol(NgaugesNew):1]
-        nc_close(newData)
+        NgaugesNew = ncvar_get(newData, 's') # Extract gauges info as matrix
+        NgaugesNew = NgaugesNew[ ,ncol(NgaugesNew):1] # flip
+        nc_close(newData) # Close netcdf
       }
       ## Add or update selected slice to existing target netcdf
       summaryList = lapply(list(prcpNew, NgaugesNew), function(x) {
         summary(as.vector(x))
       })
-      names(summaryList) = names(target_nc$var)
-      ncvar_put(target_nc, varid='prcp', vals=prcpNew, start=c(1,1,1,timeSlice), count=c(360,180,1,1)) 
+      names(summaryList) = names(target_nc$var) # Give variables names
+      # Write values to target netcdf file
+      ncvar_put(target_nc, varid='prcp', vals=prcpNew, start=c(1,1,1,timeSlice), count=c(360,180,1,1))
       ncvar_put(target_nc, varid='numStations', vals=NgaugesNew, start=c(1,1,1,timeSlice), count=c(360,180,1,1))
     }
     
@@ -108,10 +113,10 @@
       src_data = paste0('ftp://ftp.dwd.de/pub/data/gpcc/monitoring/gpcc10', yr, '_monitoring_v4.zip')
       gz = basename(src_data)
       download.file(src_data, gz)
-      if(file.info(gz)$size < 1000){
-        remove_unavailable(gz)
+      if(file.info(gz)$size < 1000){ # Check if file is smaller than 1000 byte: empty file
+        remove_unavailable(gz) 
       } else if(!paste0('gpcc_10_',mm,yr,'_monitoring_product_v4') %in% unzip(gz, list = TRUE)[,1]){
-        remove_unavailable(gz)
+        remove_unavailable(gz) # Remove if the file was already downloaded and unzipped (solely to keep work dir tidy)
       } else {
         # Read in the selected period and iterate to copy all variables into archive netcdf
         newData = read.table(unz(gz, paste0('gpcc_10_',mm,yr,'_monitoring_product_v4')), skip = 25, sep = "") # Read ascii removing header
@@ -122,7 +127,7 @@
           new = new[ ,ncol(new):1] # Revert columns to match netcdf format
           nm = names(target_nc$var)[i]
           summaryList[[nm]] = summary(as.vector(new))
-          ncvar_put(target_nc, varid=nm, vals=new, start=c(1,1,1,timeSlice), count=c(360,180,1,1))
+          ncvar_put(target_nc, varid=nm, vals=new, start=c(1,1,1,timeSlice), count=c(360,180,1,1)) # Write values to target netcdf
         }
       }
     }
@@ -147,7 +152,12 @@
     return(paste0(getwd(),'/',gz)) # Pass downloaded file name to application
   }
   
-  
+  ## Function to write data into the database, via SQL queries
+  # vars: vector of variables to write/update to the database
+  # ID: grid ID as in the database
+  # yr, mm: year YYYY, month MM
+  # ch: database connection
+  # newData: dataframe of values to write to the database 
   submit_query = function(vars, ID, yr, mm, ch, newData){
     # Add each variable to the oracle database 
     cat('Looping trough values.\nThis may take a few minutes and freeze the GUI until finished.\n')
@@ -173,10 +183,14 @@
     }
   }
   
-  # db update
+  ## Function to update the database, manages the input data to write
+  # db: database name
+  # what: monitoring (v4) or first guess?
+  # yr, mm: year YYYY, month MM
+  # dwn: logical, token to download or not the data (depends on which functions were executed already)
   db_update = function(db, what, yr, mm, username, password, dwn){
     library(RODBC)
-    ch = odbcConnect(db, uid=username, pwd=password)
+    ch = odbcConnect(db, uid=username, pwd=password) # open database connection
     ## Retrieve monthly data from GPCC and check whether it exists in target netcdf
     mm = ifelse(mm %in% 1:9, paste0('0', mm), mm) # Make sure month string has the zero ahead
     gm = ifelse(what=="First guess", "GUESS_RAIN_", "MON_RAIN_")
@@ -199,7 +213,7 @@
           download_and_check(src_nc)
           dwn = gsub('.gz','',basename(src_nc))
         }
-        newData = read.table(dwn, skip = 8, sep = "") # Read ascii removing header
+        newData = read.table(dwn, skip = 8, sep = "") # Read ascii removing header (first 8 rows)
         prcp = newData[ ,1]
         prcpNew = matrix(prcp, nc=180)
         prcpNew = prcpNew[ ,ncol(prcpNew):1] # flip matrix to match netcdf format
@@ -209,16 +223,16 @@
       } else {
         src_nc = paste0('ftp://ftp.dwd.de/pub/data/gpcc/first_guess/', yr, '/first_guess_monthly_', yr, '_', mm, '.nc.gz')
         # check the file hasn't been downloaded already
-        if(dwn == FALSE){
+        if(dwn == FALSE){ # if data were not downloaded already, do it now
           download_and_check(src_nc)
           dwn = gsub('.gz','',basename(src_nc))
         }
-        newData = nc_open(dwn)
-        prcpNew = ncvar_get(newData, 'p')
+        newData = nc_open(dwn) # open netcdf
+        prcpNew = ncvar_get(newData, 'p') # extract precipitation data
         prcpNew = prcpNew[ ,ncol(prcpNew):1]  # flip matrix to match netcdf format
-        NgaugesNew = ncvar_get(newData, 's')
-        NgaugesNew = NgaugesNew[ ,ncol(NgaugesNew):1]
-        nc_close(newData)
+        NgaugesNew = ncvar_get(newData, 's') # extract gauges data
+        NgaugesNew = NgaugesNew[ ,ncol(NgaugesNew):1] # flip
+        nc_close(newData) # close netcdf
       }
       
       # Write/update data in tabular database using the identifier
@@ -234,19 +248,19 @@
     if(what == "Monitoring (v4)"){ # monitoring db update ----
       ## Download, check existence, unzip and extract data for selected month
       src_data = paste0('ftp://ftp.dwd.de/pub/data/gpcc/monitoring/gpcc10', yr, '_monitoring_v4.zip')
-      if(dwn == FALSE){
+      if(dwn == FALSE){ # if data were not downloaded already, do it now
         dwn = basename(src_data)
         download.file(src_data, dwn)
       }
-      if(file.info(dwn)$size < 1000){
+      if(file.info(dwn)$size < 1000){ # Check if file is smaller than 1000 byte: empty file
         remove_unavailable(dwn)
       } else if(!paste0('gpcc_10_',mm,yr,'_monitoring_product_v4') %in% unzip(dwn, list = TRUE)[,1]){
-        remove_unavailable(dwn)
+        remove_unavailable(dwn) # tidy work dir: data were downloaded and extracted, so remove it
       } else {
         # Read in the selected period and iterate to copy all variables into archive db
         newData = read.table(unz(dwn, paste0('gpcc_10_',mm,yr,'_monitoring_product_v4')), skip = 25, sep = "") # Read ascii removing header
-        for(i in 1:ncol(newData)){
-          new = matrix(newData[ ,i], nc=180)
+        for(i in 1:ncol(newData)){ # loop through variables
+          new = matrix(newData[ ,i], nc=180) # make matrix 
           new = new[ ,ncol(new):1] # Revert columns to match netcdf format
           newData[ ,i] = as.numeric(t(new)) # Reorder table data to match identifier in oracle database below
         }
@@ -257,16 +271,17 @@
         newData = newData[keepThese, ] # Remove rows with NULL values in rainfall data
         ID = (1:(360*180))[keepThese] # Identifier to interact with Oracle database (it's sorted accordingly)
         vars = c('MON_RAIN','MON_GAUGES','MON_SOLID','MON_LIQUID','MON_GAUGE_ERROR','MON_GAUGE_PERC','MON_GAUGE_CORR')
-        submit_query(vars, ID, what, yr, mm, ch, newData)
+        submit_query(vars, ID, what, yr, mm, ch, newData) # write data to database
       }
     }
-    close(ch)
+    close(ch) # close database connection
     cat('\nDatabase successfully updated.\n')
-    return(paste0(getwd(),'/',dwn))
+    return(paste0(getwd(),'/',dwn)) # return token to signal whether to download or not, later in the script
   }
 
 
   ## Start up the GUI ----
+  # The following builds the user interface and the logic underneath, calling functions depending by user choices
   GUI = function(){
     win = gwindow("GPCC data updater", visible = FALSE)
     titleFrame = gframe("", container = win)
