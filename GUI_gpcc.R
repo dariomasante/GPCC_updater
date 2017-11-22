@@ -36,8 +36,8 @@
   ## File remover when requested date is not available
   remove_unavailable = function(zipfile){
     file.remove(zipfile)
-    gmessage("Selected month or data version 4 not available from GPCC.\nPlease double check at:  ftp://ftp.dwd.de/pub/data/gpcc/")
-    stop('Selected month or data version 4 not available from GPCC.\nPlease double check at:  ftp://ftp.dwd.de/pub/data/gpcc/')
+    gmessage("Selected month not available from GPCC (or just not for data version 4).\nPlease check available months at:  ftp://ftp.dwd.de/pub/data/gpcc/")
+    stop('Selected month not available from GPCC (or just not for data version 4).\nPlease check available months at:  ftp://ftp.dwd.de/pub/data/gpcc/')
   }
   
   ## This function updates the target netcdf, returning a token (downloaded file)
@@ -302,10 +302,9 @@
     
     whichFrame = gframe("What GPCC data to use?", container = win)
     ticklist_what = c("First guess", "Monitoring (v4)")
-    what_chk = gradio(ticklist_what, container=whichFrame)
+    what_chk = gradio(ticklist_what, container = whichFrame)
     
     upFrame = gframe("What would you like to update?", container = win, horizontal=FALSE)
-    
     ticklist = c("Netcdf file","Database")
     chk_sel = gcheckboxgroup(ticklist, container=upFrame, checked=TRUE)
     
@@ -321,6 +320,8 @@
     pass_db = gedit('', container = upFrame)
     visible(pass_db) = FALSE 
     
+    tick_interm = '\nSelect to remove the downloaded netcdf after update\n'
+    interm_sel = gcheckboxgroup(tick_interm, container = win, checked=TRUE)
     glabel(" ", container = win)
     
     # Run button ----
@@ -363,7 +364,9 @@
         download_gpcc = db_update(db=tdb, what, yr, mm, 
                                   username=udb, password=pdb, dwn=download_gpcc)
       }
-      file.remove(download_gpcc)
+      if(length(svalue(interm_sel)) > 0){
+        file.remove(download_gpcc)
+      }
       rm(download_gpcc) # unnecessary
       cat('Execution completed.\n')
     }
