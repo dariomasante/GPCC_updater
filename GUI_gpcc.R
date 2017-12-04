@@ -119,7 +119,11 @@
         remove_unavailable(gz) # Remove if the file was already downloaded and unzipped (solely to keep work dir tidy)
       } else {
         # Read in the selected period and iterate to copy all variables into archive netcdf
-        newData = read.table(unz(gz, paste0('gpcc_10_',mm,yr,'_monitoring_product_v4')), skip = 25, sep = "") # Read ascii removing header
+        funzip = paste0('gpcc_10_',mm,yr,'_monitoring_product_v4.asc')
+        unzip(gz, files=funzip)
+        file.remove(gz)
+        gz = funzip
+        newData = read.table(gz, skip = 25, sep = "") # Read ascii removing header
         newData[newData < 0] = NA # substitute fill values with NA
         summaryList = list()
         for(i in 1:ncol(newData)){
@@ -189,7 +193,6 @@
   # yr, mm: year YYYY, month MM
   # dwn: logical, token to download or not the data (depends on which functions were executed already)
   db_update = function(db, what, yr, mm, username, password, dwn){
-    library(RODBC)
     ch = odbcConnect(db, uid=username, pwd=password) # open database connection
     ## Retrieve monthly data from GPCC and check whether it exists in target netcdf
     mm = ifelse(mm %in% 1:9, paste0('0', mm), mm) # Make sure month string has the zero ahead
@@ -344,6 +347,7 @@
         library(ncdf4)
         cat('Updating netcdf file...\n')
         # 'download_gpcc' avoids downloading the same data twice if database is selected too
+        setwd(dirname(tnc))
         download_gpcc = netcdf_update(target=tnc, what, yr, mm)
       }
       if(ticklist[2] %in% chk){ # When database is selected
@@ -361,8 +365,12 @@
         download_gpcc = db_update(db=tdb, what, yr, mm, 
                                   username=udb, password=pdb, dwn=download_gpcc)
       }
-      if(length(svalue(interm_sel)) > 0 & download_gpcc != FALSE){
-        file.remove(download_gpcc)
+      if(download_gpcc != FALSE){
+        if(length(svalue(interm_sel)) > 0){
+          file.remove(download_gpcc)
+        } else {
+          cat('Downloaded netcdf was stored at: ', download_gpcc, '\n')
+        }
       }
       rm(download_gpcc) # unnecessary
       cat('Execution completed.\n')
