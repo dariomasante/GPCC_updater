@@ -63,7 +63,7 @@
         monthSince = tm[timeSlice]
         postpone_message = FALSE
       } else {
-        return() # Do nothing; this is required to keep the application running out of the function
+        return(FALSE) # Do nothing; this is required to keep the application running out of the function
       }
     } else {
       monthSince = (yr - as.integer(format(org, '%Y'))) * 12 + as.integer(mm) - 1
@@ -199,7 +199,8 @@
       conf = gconfirm("The month you requested is present in target database already. \n\nWould you like to replace it?\n")
       warning("The requested month is present in target database already.")
       if(!conf){
-        return() # required to keep the application running out of the function
+        close(ch) # close database connection
+        return(FALSE) # required to keep the application running out of the function
       }
     }
     
@@ -242,7 +243,6 @@
       newData = newData[keepThese, ] # Remove rows with NULL values in rainfall data
       ID = (1:(360*180))[keepThese] # Identifier to interact with Oracle database (it's sorted accordingly)
       vars = c('GUESS_RAIN','GUESS_GAUGES')
-      submit_query(vars, ID, what, yr, mm, ch, newData)
     }
     
     if(what == "Monitoring (v4)"){ # monitoring db update ----
@@ -271,9 +271,9 @@
         newData = newData[keepThese, ] # Remove rows with NULL values in rainfall data
         ID = (1:(360*180))[keepThese] # Identifier to interact with Oracle database (it's sorted accordingly)
         vars = c('MON_RAIN','MON_GAUGES','MON_SOLID','MON_LIQUID','MON_GAUGE_ERROR','MON_GAUGE_PERC','MON_GAUGE_CORR')
-        submit_query(vars, ID, what, yr, mm, ch, newData) # write data to database
       }
     }
+    submit_query(vars, ID, yr, mm, ch, newData) # write data to database
     close(ch) # close database connection
     cat('\nDatabase successfully updated.\n')
     return(paste0(getwd(),'/',dwn)) # return token to signal whether to download or not, later in the script
@@ -335,13 +335,11 @@
       if(length(chk) == 0){
         gmessage("Please select at least one item to update (netcdf or database)")
         stop("No item to update was specified (netcdf or database)")
-        #return()
       }
       if(ticklist[1] %in% chk){ # When netcdf is selected
         if(nchar(tnc) == 0){
           gmessage("Please add the target netcdf to update.")
           stop("The target netcdf to update is missing.")
-          #return()
         }
         library(ncdf4)
         cat('Updating netcdf file...\n')
@@ -355,8 +353,7 @@
         if(nchar(tdb) == 0 | nchar(pdb) == 0 | nchar(udb) == 0){
           tryCatch(file.remove(download_gpcc), error=function(e){})
           gmessage("Please specify database to update, user and password.")
-          stop("Database input, user and/or password are are missing.")
-          #return()
+          stop("Database input, user and/or password are missing.")
         }
         cat('Updating database...\n')
         library(RODBC)
@@ -364,7 +361,7 @@
         download_gpcc = db_update(db=tdb, what, yr, mm, 
                                   username=udb, password=pdb, dwn=download_gpcc)
       }
-      if(length(svalue(interm_sel)) > 0){
+      if(length(svalue(interm_sel)) > 0 & download_gpcc != FALSE){
         file.remove(download_gpcc)
       }
       rm(download_gpcc) # unnecessary
