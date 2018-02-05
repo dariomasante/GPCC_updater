@@ -119,7 +119,7 @@
         remove_unavailable(gz) # Remove if the file was already downloaded and unzipped (solely to keep work dir tidy)
       } else {
         # Read in the selected period and iterate to copy all variables into archive netcdf
-        funzip = paste0('gpcc_10_',mm,yr,'_monitoring_product_v4.asc')
+        funzip = paste0('gpcc_10_',mm,yr,'_monitoring_product_v4')
         unzip(gz, files=funzip)
         file.remove(gz)
         gz = funzip
