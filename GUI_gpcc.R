@@ -211,12 +211,15 @@
       library(R.utils)
       ## Download, unzip and extract data for selected month
       # Data before 2013 is in ascii format only, afterwards in netcdf too (the latter is preferred when available)
+      strFile = ifelse(yr < 2013, 
+                       paste0('/gpcc_first_guess_', mm, '_', yr, '.gz'), 
+                       paste0('/first_guess_monthly_', yr, '_', mm, '.nc.gz'))
+      src = paste0('ftp://ftp.dwd.de/pub/data/gpcc/first_guess/', yr, strFile)
+      if(dwn == FALSE){ # if data were not downloaded already, do it now
+        download_and_check(src)
+        dwn = gsub('.gz','',basename(src))
+      }
       if(yr < 2013){
-        src_nc = paste0('ftp://ftp.dwd.de/pub/data/gpcc/first_guess/', yr, '/gpcc_first_guess_', mm, '_', yr, '.gz')
-        if(dwn == FALSE){
-          download_and_check(src_nc)
-          dwn = gsub('.gz','',basename(src_nc))
-        }
         newData = read.table(dwn, skip = 8, sep = "") # Read ascii removing header (first 8 rows)
         prcp = newData[ ,1]
         prcpNew = matrix(prcp, nc=180)
@@ -225,12 +228,6 @@
         NgaugesNew = matrix(Ngauges, nc=180)
         NgaugesNew = NgaugesNew[ ,ncol(NgaugesNew):1]
       } else {
-        src_nc = paste0('ftp://ftp.dwd.de/pub/data/gpcc/first_guess/', yr, '/first_guess_monthly_', yr, '_', mm, '.nc.gz')
-        # check the file hasn't been downloaded already
-        if(dwn == FALSE){ # if data were not downloaded already, do it now
-          download_and_check(src_nc)
-          dwn = gsub('.gz','',basename(src_nc))
-        }
         newData = nc_open(dwn) # open netcdf
         prcpNew = ncvar_get(newData, 'p') # extract precipitation data
         prcpNew = prcpNew[ ,ncol(prcpNew):1]  # flip matrix to match netcdf format
@@ -254,27 +251,27 @@
       if(dwn == FALSE){ # if data were not downloaded already, do it now
         dwn = basename(src_data)
         download.file(src_data, dwn)
-      }
-      if(file.info(dwn)$size < 1000){ # Check if file is smaller than 1000 byte: empty file
-        remove_unavailable(dwn)
-      } else if(!paste0('gpcc_10_',mm,yr,'_monitoring_product_v4') %in% unzip(dwn, list = TRUE)[,1]){
-        remove_unavailable(dwn) # tidy work dir: data were downloaded and extracted, so remove it
-      } else {
-        # Read in the selected period and iterate to copy all variables into archive db
-        newData = read.table(unz(dwn, paste0('gpcc_10_',mm,yr,'_monitoring_product_v4')), skip = 25, sep = "") # Read ascii removing header
-        for(i in 1:ncol(newData)){ # loop through variables
-          new = matrix(newData[ ,i], nc=180) # make matrix 
-          new = new[ ,ncol(new):1] # Revert columns to match netcdf format
-          newData[ ,i] = as.numeric(t(new)) # Reorder table data to match identifier in oracle database below
+        if(file.info(dwn)$size < 1000){ # Check if file is smaller than 1000 byte: empty file
+          remove_unavailable(dwn)
+        } else if(!paste0('gpcc_10_',mm,yr,'_monitoring_product_v4') %in% unzip(dwn, list = TRUE)[,1]){
+          remove_unavailable(dwn) 
         }
-        
-        # Write/update data in tabular database using the identifier
-        keepThese = which(newData[ ,1] != -99999.99) # Identify rows with valid rainfall data (including zero)
-        #good_vs_NA = data.frame(Valid_Records=length(keepThese), Null_records=nrow(newData)-length(keepThese))
-        newData = newData[keepThese, ] # Remove rows with NULL values in rainfall data
-        ID = (1:(360*180))[keepThese] # Identifier to interact with Oracle database (it's sorted accordingly)
-        vars = c('MON_RAIN','MON_GAUGES','MON_SOLID','MON_LIQUID','MON_GAUGE_ERROR','MON_GAUGE_PERC','MON_GAUGE_CORR')
+        dwn = unz(dwn, paste0('gpcc_10_',mm,yr,'_monitoring_product_v4'))
       }
+      # Read in the selected period and iterate to copy all variables into archive db
+      newData = read.table(dwn, skip = 25, sep = "") # Read ascii removing header
+      for(i in 1:ncol(newData)){ # loop through variables
+        new = matrix(newData[ ,i], nc=180) # make matrix 
+        new = new[ ,ncol(new):1] # Revert columns to match netcdf format
+        newData[ ,i] = as.numeric(t(new)) # Reorder table data to match identifier in oracle database below
+      }
+      
+      # Write/update data in tabular database using the identifier
+      keepThese = which(newData[ ,1] != -99999.99) # Identify rows with valid rainfall data (including zero)
+      #good_vs_NA = data.frame(Valid_Records=length(keepThese), Null_records=nrow(newData)-length(keepThese))
+      newData = newData[keepThese, ] # Remove rows with NULL values in rainfall data
+      ID = (1:(360*180))[keepThese] # Identifier to interact with Oracle database (it's sorted accordingly)
+      vars = c('MON_RAIN','MON_GAUGES','MON_SOLID','MON_LIQUID','MON_GAUGE_ERROR','MON_GAUGE_PERC','MON_GAUGE_CORR')
     }
     submit_query(vars, ID, yr, mm, ch, newData) # write data to database
     close(ch) # close database connection
