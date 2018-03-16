@@ -193,7 +193,23 @@
   # yr, mm: year YYYY, month MM
   # dwn: logical, token to download or not the data (depends on which functions were executed already)
   db_update = function(db, what, yr, mm, username, password, dwn){
-    ch = odbcConnect(db, uid=username, pwd=password) # open database connection
+    cat('Trying to connect to database...')
+    ch = tryCatch( # try to open database connection, if fails...
+      odbcConnect(db, uid=username, pwd=password), error=function(e){stop(e)}, warning=function(w){})
+    if(is.null(ch)){
+      cat('Still trying to connect, adding default driver specification: "{Oracle in OraClient12Home1}" ...')
+      ch = tryCatch( # ...try again with driver specification...
+        odbcDriverConnect(paste0("Driver={Oracle in OraClient12Home1};Dbq=",db,";Uid=",username,";Pwd=",password)),
+          error=function(e){stop(e)}, warning=function(w){})
+    }
+    if(is.null(ch)){
+      cat('Trying once more, adding driver specification and default service name: "',username,'/dea.ies.jrc.it"...', sep='')
+      ch = tryCatch( # ...try once more adding the service name
+        odbcDriverConnect(paste0("Driver={Oracle in OraClient12Home1};Dbq=",db,"/dea.ies.jrc.it;Uid=",username,";Pwd=",password)),
+          error=function(e){stop(e)}, warning=function(w){stop(w)})
+    }
+    cat('Connected to database')
+    
     ## Retrieve monthly data from GPCC and check whether it exists in target netcdf
     mm = ifelse(mm %in% 1:9, paste0('0', mm), mm) # Make sure month string has the zero ahead
     gm = ifelse(what=="First guess", "GUESS_RAIN_", "MON_RAIN_")
