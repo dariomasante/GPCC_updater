@@ -164,7 +164,7 @@
   # newData: dataframe of values to write to the database 
   submit_query = function(vars, ID, yr, mm, ch, newData){
     # Add each variable to the oracle database 
-    cat('Looping trough values.\nThis may take a few minutes and freeze the GUI until finished.\n')
+    cat('Looping trough values.  \nThis may take a few minutes and freeze the GUI until finished.  \n')
     lgt = length(ID)
     for(x in 1:lgt){
       sqlstring = paste("select count(*) total from GRID_1DD_GPCC where YEAR =", yr, "and G1D_ID = ", ID[x])
@@ -182,7 +182,7 @@
         sqlQuery(ch, updateString)
       }
       if(x %% 2000 == 0){
-        cat(x,'records out of', lgt, 'processed.\n')
+        cat(x,'records out of', lgt, 'processed.  \n')
       }
     }
   }
@@ -193,22 +193,22 @@
   # yr, mm: year YYYY, month MM
   # dwn: logical, token to download or not the data (depends on which functions were executed already)
   db_update = function(db, what, yr, mm, username, password, dwn){
-    cat('Trying to connect to database...')
+    cat('trying to connect...  \n')
     ch = tryCatch( # try to open database connection, if fails...
       odbcConnect(db, uid=username, pwd=password), error=function(e){stop(e)}, warning=function(w){})
     if(is.null(ch)){
-      cat('Still trying to connect, adding default driver specification: "{Oracle in OraClient12Home1}" ...')
+      cat('still trying to connect, adding default driver specification: "{Oracle in OraClient12Home1}" ...  \n')
       ch = tryCatch( # ...try again with driver specification...
         odbcDriverConnect(paste0("Driver={Oracle in OraClient12Home1};Dbq=",db,";Uid=",username,";Pwd=",password)),
           error=function(e){stop(e)}, warning=function(w){})
     }
     if(is.null(ch)){
-      cat('Trying once more, adding driver specification and default service name: "',username,'/dea.ies.jrc.it"...', sep='')
+      cat('trying once more, adding driver specification and default service name: "',username,'/dea.ies.jrc.it"...  \n', sep='')
       ch = tryCatch( # ...try once more adding the service name
         odbcDriverConnect(paste0("Driver={Oracle in OraClient12Home1};Dbq=",db,"/dea.ies.jrc.it;Uid=",username,";Pwd=",password)),
           error=function(e){stop(e)}, warning=function(w){stop(w)})
     }
-    cat('Connected to database')
+    cat('Successfully connected to database.  \n')
     
     ## Retrieve monthly data from GPCC and check whether it exists in target netcdf
     mm = ifelse(mm %in% 1:9, paste0('0', mm), mm) # Make sure month string has the zero ahead
@@ -342,7 +342,7 @@
     
     # Run button ----
     btnCalc = gbutton("\nRun\n", container = win, handler = function(h, ...) {
-      cat('\nStarted...\n')
+      cat('\n### STARTED ###  \n')
       yr = as.integer(svalue(yr_txt))
       mm = svalue(mm_sel)
       what = svalue(what_chk)
@@ -358,7 +358,7 @@
           stop("The target netcdf to update is missing.")
         }
         library(ncdf4)
-        cat('Updating netcdf file...\n')
+        cat('Updating netcdf file...  \n')
         # 'download_gpcc' avoids downloading the same data twice if database is selected too
         setwd(dirname(tnc))
         download_gpcc = netcdf_update(target=tnc, what, yr, mm)
@@ -372,7 +372,7 @@
           gmessage("Please specify database to update, user and password.")
           stop("Database input, user and/or password are missing.")
         }
-        cat('Updating database...\n')
+        cat('Updating database:  \n')
         library(RODBC)
         download_gpcc = ifelse(exists('download_gpcc'), download_gpcc, FALSE)
         download_gpcc = db_update(db=tdb, what, yr, mm, 
@@ -386,7 +386,7 @@
         }
       }
       rm(download_gpcc) # unnecessary
-      cat('Execution completed.\n')
+      cat('\nExecution completed.  \n')
     }
     )
     
