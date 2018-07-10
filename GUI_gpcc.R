@@ -36,13 +36,13 @@
   ## File remover when requested date is not available
   remove_unavailable = function(zipfile){
     file.remove(zipfile)
-    gmessage("Selected month not available from GPCC (or just not for data version 4).\nPlease check available months at:  ftp://ftp.dwd.de/pub/data/gpcc/")
-    stop('Selected month not available from GPCC (or just not for data version 4).\nPlease check available months at:  ftp://ftp.dwd.de/pub/data/gpcc/')
+    gmessage("Selected month not available from GPCC (or just not for data version 6).\nPlease check available months at:  ftp://ftp.dwd.de/pub/data/gpcc/")
+    stop('Selected month not available from GPCC (or just not for data version 6).\nPlease check available months at:  ftp://ftp.dwd.de/pub/data/gpcc/')
   }
   
   ## This function updates the target netcdf, returning a token (downloaded file)
   # target: target netcdf to be updated
-  # what: monitoring (v4) or first guess?
+  # what: monitoring (v6) or first guess?
   # yr, mm: year YYYY, month MM
   netcdf_update = function(target, what, yr, mm){
     # Retrieve monthly data from GPCC and check whether it exists in target netcdf
@@ -71,7 +71,6 @@
       # Check if any months before the selected period were not updated. 
       postpone_message = ifelse(timeSlice - length(tm) > 1, TRUE, FALSE)
     }
-    
     ## Download, check existence, unzip and extract data for selected month
     if(what=="First guess"){ # first guess netcdf update ----
       library(R.utils)
@@ -123,12 +122,13 @@
       solid_p = solid_p[ ,ncol(solid_p):1]
       liquid_p = ncvar_get(newData, 'liquid_p')
       liquid_p = liquid_p[ ,ncol(liquid_p):1]
-      rel_gauge_err = ncvar_get(newData, 'rel_gauge_err')
-      rel_gauge_err = rel_gauge_err[ ,ncol(rel_gauge_err):1]
       abs_gauge_err = ncvar_get(newData, 'abs_gauge_err')
       abs_gauge_err = abs_gauge_err[ ,ncol(abs_gauge_err):1]
+      rel_gauge_err = ncvar_get(newData, 'rel_gauge_err')
+      rel_gauge_err = rel_gauge_err[ ,ncol(rel_gauge_err):1]
       corr_fac = ncvar_get(newData, 'corr_fac')
       corr_fac = corr_fac[ ,ncol(corr_fac):1]
+      nc_close(newData) # close netcdf
       ## Add or update selected slice to existing target netcdf
       summaryList = lapply(list(prcpNew, NgaugesNew, solid_p, liquid_p, rel_gauge_err, abs_gauge_err, corr_fac), 
                            function(x) {summary(as.vector(x))
@@ -197,7 +197,7 @@
   
   ## Function to update the database, manages the input data to write
   # db: database name
-  # what: monitoring (v4) or first guess?
+  # what: monitoring (v6) or first guess?
   # yr, mm: year YYYY, month MM
   # dwn: logical, token to download or not the data (depends on which functions were executed already)
   db_update = function(db, what, yr, mm, username, password, dwn){
@@ -277,16 +277,28 @@
         dwn = gsub('.gz','', basename(src_nc))
       }
       # Read in the selected period and iterate to copy all variables into archive db
-      newData = nc_open(gz) # Open downloaded and unzipped netcdf
-      
-      # for(i in 1:ncol(newData)){ # loop through variables
-      #   new = matrix(newData[ ,i], nc=180) # make matrix 
-      #   new = new[ ,ncol(new):1] # Revert columns to match netcdf format
-      #   newData[ ,i] = as.numeric(t(new)) # Reorder table data to match identifier in oracle database below
-      # }
-      
+      newData = nc_open(dwn) # Open downloaded and unzipped netcdf
+      prcpNew = ncvar_get(newData, 'p') # Extract precipitation values as matrix
+      prcpNew = prcpNew[ ,ncol(prcpNew):1]  # flip matrix to match netcdf format
+      NgaugesNew = ncvar_get(newData, 's') # Extract gauges info as matrix
+      NgaugesNew = NgaugesNew[ ,ncol(NgaugesNew):1] # flip
+      solid_p = ncvar_get(newData, 'solid_p')
+      solid_p = solid_p[ ,ncol(solid_p):1]
+      liquid_p = ncvar_get(newData, 'liquid_p')
+      liquid_p = liquid_p[ ,ncol(liquid_p):1]
+      abs_gauge_err = ncvar_get(newData, 'abs_gauge_err')
+      abs_gauge_err = abs_gauge_err[ ,ncol(abs_gauge_err):1]
+      rel_gauge_err = ncvar_get(newData, 'rel_gauge_err')
+      rel_gauge_err = rel_gauge_err[ ,ncol(rel_gauge_err):1]
+      corr_fac = ncvar_get(newData, 'corr_fac')
+      corr_fac = corr_fac[ ,ncol(corr_fac):1]
+      nc_close(newData) # close netcdf
+
       # Write/update data in tabular database using the identifier
-      keepThese = which(newData[ ,1] != -99999.99) # Identify rows with valid rainfall data (including zero)
+      newData = cbind(as.vector(t(prcpNew)), as.vector(t(NgaugesNew)), as.vector(t(solid_p)),
+                      as.vector(t(liquid_p)), as.vector(t(abs_gauge_err)),
+                      as.vector(t(rel_gauge_err)), as.vector(t(corr_fac)))
+      keepThese = which(newData[ ,1] != -99999.99 & !is.na(newData[ ,1])) # Identify rows with valid rainfall data (including zero)
       #good_vs_NA = data.frame(Valid_Records=length(keepThese), Null_records=nrow(newData)-length(keepThese))
       newData = newData[keepThese, ] # Remove rows with NULL values in rainfall data
       ID = (1:(360*180))[keepThese] # Identifier to interact with Oracle database (it's sorted accordingly)
@@ -320,7 +332,7 @@
     #yr_sld <- gslider(from=1982, to = currentYear, by =1, value=currentYear, container=periodFrame)
     
     whichFrame = gframe("What GPCC data to use?", container = win)
-    ticklist_what = c("First guess", "Monitoring (v4)")
+    ticklist_what = c("First guess", "Monitoring (v6)")
     what_chk = gradio(ticklist_what, container = whichFrame)
     
     upFrame = gframe("What would you like to update?", container = win, horizontal=FALSE)
