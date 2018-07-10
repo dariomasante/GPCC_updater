@@ -109,31 +109,39 @@
       ncvar_put(target_nc, varid='numStations', vals=NgaugesNew, start=c(1,1,1,timeSlice), count=c(360,180,1,1))
     }
     
-    if(what == "Monitoring (v4)"){ # monitoring netcdf update ----
-      src_data = paste0('ftp://ftp.dwd.de/pub/data/gpcc/monitoring/gpcc10', yr, '_monitoring_v4.zip')
-      gz = basename(src_data)
-      download.file(src_data, gz)
-      if(file.info(gz)$size < 1000){ # Check if file is smaller than 1000 byte: empty file
-        remove_unavailable(gz) 
-      } else if(!paste0('gpcc_10_',mm,yr,'_monitoring_product_v4') %in% unzip(gz, list = TRUE)[,1]){
-        remove_unavailable(gz) # Remove if the file was already downloaded and unzipped (solely to keep work dir tidy)
-      } else {
-        # Read in the selected period and iterate to copy all variables into archive netcdf
-        funzip = paste0('gpcc_10_',mm,yr,'_monitoring_product_v4')
-        unzip(gz, files=funzip)
-        file.remove(gz)
-        gz = funzip
-        newData = read.table(gz, skip = 25, sep = "") # Read ascii removing header
-        newData[newData < 0] = NA # substitute fill values with NA
-        summaryList = list()
-        for(i in 1:ncol(newData)){
-          new = matrix(newData[ ,i], nc=180)
-          new = new[ ,ncol(new):1] # Revert columns to match netcdf format
-          nm = names(target_nc$var)[i]
-          summaryList[[nm]] = summary(as.vector(new))
-          ncvar_put(target_nc, varid=nm, vals=new, start=c(1,1,1,timeSlice), count=c(360,180,1,1)) # Write values to target netcdf
-        }
-      }
+    if(what == "Monitoring (v6)"){ # monitoring netcdf update ----
+      src_nc = paste0('ftp://ftp.dwd.de/pub/data/gpcc/monitoring_v6/', yr, '/monitoring_v6_10_', yr, '_', mm, '.nc.gz')
+      download_and_check(src_nc)
+      gz = gsub('.gz','',basename(src_nc))
+      newData = nc_open(gz) # Open downloaded and unzipped netcdf
+      # Read in the selected period and iterate to copy all variables into archive netcdf
+      prcpNew = ncvar_get(newData, 'p') # Extract precipitation values as matrix
+      prcpNew = prcpNew[ ,ncol(prcpNew):1]  # flip matrix to match netcdf format
+      NgaugesNew = ncvar_get(newData, 's') # Extract gauges info as matrix
+      NgaugesNew = NgaugesNew[ ,ncol(NgaugesNew):1] # flip
+      solid_p = ncvar_get(newData, 'solid_p')
+      solid_p = solid_p[ ,ncol(solid_p):1]
+      liquid_p = ncvar_get(newData, 'liquid_p')
+      liquid_p = liquid_p[ ,ncol(liquid_p):1]
+      rel_gauge_err = ncvar_get(newData, 'rel_gauge_err')
+      rel_gauge_err = rel_gauge_err[ ,ncol(rel_gauge_err):1]
+      abs_gauge_err = ncvar_get(newData, 'abs_gauge_err')
+      abs_gauge_err = abs_gauge_err[ ,ncol(abs_gauge_err):1]
+      corr_fac = ncvar_get(newData, 'corr_fac')
+      corr_fac = corr_fac[ ,ncol(corr_fac):1]
+      ## Add or update selected slice to existing target netcdf
+      summaryList = lapply(list(prcpNew, NgaugesNew, solid_p, liquid_p, rel_gauge_err, abs_gauge_err, corr_fac), 
+                           function(x) {summary(as.vector(x))
+      })
+      names(summaryList) = names(target_nc$var) # Give variables names
+      # Write values to target netcdf file
+      ncvar_put(target_nc, varid='prcp', vals=prcpNew, start=c(1,1,1,timeSlice), count=c(360,180,1,1))
+      ncvar_put(target_nc, varid='numStations', vals=NgaugesNew, start=c(1,1,1,timeSlice), count=c(360,180,1,1))
+      ncvar_put(target_nc, varid='proportionSolidPrecip', vals=solid_p, start=c(1,1,1,timeSlice), count=c(360,180,1,1))
+      ncvar_put(target_nc, varid='proportionLiquidPrecip', vals=liquid_p, start=c(1,1,1,timeSlice), count=c(360,180,1,1))
+      ncvar_put(target_nc, varid='absoluteError', vals=abs_gauge_err, start=c(1,1,1,timeSlice), count=c(360,180,1,1))
+      ncvar_put(target_nc, varid='relativeError', vals=rel_gauge_err, start=c(1,1,1,timeSlice), count=c(360,180,1,1))
+      ncvar_put(target_nc, varid='errorCorrection', vals=corr_fac, start=c(1,1,1,timeSlice), count=c(360,180,1,1))
     }
     
     ## Condition to check whether there are any missing months in between requested date, then updates time dimension
@@ -261,26 +269,21 @@
       vars = c('GUESS_RAIN','GUESS_GAUGES')
     }
     
-    if(what == "Monitoring (v4)"){ # monitoring db update ----
+    if(what == "Monitoring (v6)"){ # monitoring db update ----
       ## Download, check existence, unzip and extract data for selected month
-      src_data = paste0('ftp://ftp.dwd.de/pub/data/gpcc/monitoring/gpcc10', yr, '_monitoring_v4.zip')
+      src_nc = paste0('ftp://ftp.dwd.de/pub/data/gpcc/monitoring_v6/', yr, '/monitoring_v6_10_', yr, '_', mm, '.nc.gz')
       if(dwn == FALSE){ # if data were not downloaded already, do it now
-        dwn = basename(src_data)
-        download.file(src_data, dwn)
-        if(file.info(dwn)$size < 1000){ # Check if file is smaller than 1000 byte: empty file
-          remove_unavailable(dwn)
-        } else if(!paste0('gpcc_10_',mm,yr,'_monitoring_product_v4') %in% unzip(dwn, list = TRUE)[,1]){
-          remove_unavailable(dwn) 
-        }
-        dwn = unz(dwn, paste0('gpcc_10_',mm,yr,'_monitoring_product_v4'))
+        download_and_check(src_nc)
+        dwn = gsub('.gz','', basename(src_nc))
       }
       # Read in the selected period and iterate to copy all variables into archive db
-      newData = read.table(dwn, skip = 25, sep = "") # Read ascii removing header
-      for(i in 1:ncol(newData)){ # loop through variables
-        new = matrix(newData[ ,i], nc=180) # make matrix 
-        new = new[ ,ncol(new):1] # Revert columns to match netcdf format
-        newData[ ,i] = as.numeric(t(new)) # Reorder table data to match identifier in oracle database below
-      }
+      newData = nc_open(gz) # Open downloaded and unzipped netcdf
+      
+      # for(i in 1:ncol(newData)){ # loop through variables
+      #   new = matrix(newData[ ,i], nc=180) # make matrix 
+      #   new = new[ ,ncol(new):1] # Revert columns to match netcdf format
+      #   newData[ ,i] = as.numeric(t(new)) # Reorder table data to match identifier in oracle database below
+      # }
       
       # Write/update data in tabular database using the identifier
       keepThese = which(newData[ ,1] != -99999.99) # Identify rows with valid rainfall data (including zero)
