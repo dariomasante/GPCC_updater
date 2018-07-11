@@ -72,8 +72,8 @@
       postpone_message = ifelse(timeSlice - length(tm) > 1, TRUE, FALSE)
     }
     ## Download, check existence, unzip and extract data for selected month
+    library(R.utils)
     if(what=="First guess"){ # first guess netcdf update ----
-      library(R.utils)
       # Data before 2013 is in ascii format only, afterwards in netcdf too (the latter is preferred when available)
       if(yr < 2013){
         src_nc = paste0('ftp://ftp.dwd.de/pub/data/gpcc/first_guess/', yr, '/gpcc_first_guess_', mm, '_', yr, '.gz')
