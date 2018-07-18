@@ -10,7 +10,8 @@
   ## A function wrapping up the application is loaded and visible in the R global environment as well, 
   ## allowing the application to be started in an already open R session: GPCC_updater()
   
-  # TODO: add map preview; remember file choices
+  # Version number:
+  vers = 'v2.1'
   
   # Install packages if not installed yet, then load
   if(!require(ncdf4)) {utils::install.packages("ncdf4")}
@@ -314,7 +315,7 @@
   ## Start up the GUI ----
   # The following builds the user interface and the logic underneath, calling functions depending by user choices
   GUI = function(){
-    win = gwindow("GPCC data updater", visible = FALSE)
+    win = gwindow(paste("GPCC data updater -", vers), visible = FALSE)
     titleFrame = gframe("", container = win)
     glabel("This application downloads and stores data from GPCC. \nPlease follow execution and messages on the R console", 
            container = titleFrame)
