@@ -43,8 +43,8 @@
     if(any(grepl('var',names(bugfix[['var']])))){
       bugfix = ncvar_rename(bugfix, names(bugfix[['var']])[1], 'p')
       bugfix = ncvar_rename(bugfix, names(bugfix[['var']])[2], 's')
-      nc_close(bugfix)
     }
+    nc_close(bugfix)
   }
   
   ## File remover when requested date is not available
