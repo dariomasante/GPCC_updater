@@ -32,7 +32,19 @@
     } else {
       gunzip(gz, overwrite=TRUE)
     }
-    return( gsub('.gz','',gz) )
+    gz = gsub('.gz','',gz)
+    fixVarName(gz)
+    return( gz )
+  }
+  
+  ## Fix GPCC bugged variable names
+  fixVarName = function(gz){
+    bugfix = nc_open(gz, write=TRUE)
+    if(any(grepl('var',names(bugfix[['var']])))){
+      bugfix = ncvar_rename(bugfix, names(bugfix[['var']])[1], 'p')
+      bugfix = ncvar_rename(bugfix, names(bugfix[['var']])[2], 's')
+      nc_close(bugfix)
+    }
   }
   
   ## File remover when requested date is not available
@@ -94,7 +106,7 @@
         newData = nc_open(gz) # Open downloaded and unzipped netcdf
         prcpNew = ncvar_get(newData, 'p') # Extract precipitation values as matrix
         prcpNew = prcpNew[ ,ncol(prcpNew):1]  # flip matrix to match netcdf format
-        NgaugesNew = ncvar_get(newData, 's') # Extract gauges info as matrix
+        NgaugesNew = ncvar_get(newData, 's') # extract gauges data
         NgaugesNew = NgaugesNew[ ,ncol(NgaugesNew):1] # flip
         nc_close(newData) # Close netcdf
       }
