@@ -342,9 +342,10 @@ db_update = function(db, what, yr, mm, username, password, dwn){
       error=function(e){stop(e)}, warning=function(w){})
   }
   if(is.null(ch)){
-    cat('trying once more, adding driver specification and default service name: "',username,'/dea.ies.jrc.it"...  \r\n', sep='')
+    pth = '/dea.ies.jrc.it'
+    cat('trying once more, adding driver specification and default service name: "',username,pth,'"...  \r\n', sep='')
     ch = tryCatch( # ...try once more adding the service name
-      odbcDriverConnect(paste0("Driver=",oracleDriver,";Dbq=",db,"/dea.ies.jrc.it;Uid=",username,";Pwd=",password)),
+      odbcDriverConnect(paste0("Driver=",oracleDriver,";Dbq=",db,pth,";Uid=",username,";Pwd=",password)),
       error=function(e){stop(e)}, warning=function(w){cat('Check Oracle driver, attempted with: ', oracleDriver); stop(w)})
   }
   cat('Successfully connected to database.  \r\n')
@@ -367,7 +368,7 @@ db_update = function(db, what, yr, mm, username, password, dwn){
     library(R.utils)
     ## Download, unzip and extract data for selected month
     # Data before 2013 is in ascii format only, afterwards in netcdf too (the latter is preferred when available)
-    strFile = ifelse(yr < 2013, 
+    strFile = ifelse(yr < 2013 | yr > 2018, 
                      paste0('/gpcc_first_guess_', mm, '_', yr, '.gz'), 
                      paste0('/first_guess_monthly_', yr, '_', mm, '.nc.gz'))
     src = paste0('https://opendata.dwd.de/climate_environment/GPCC/first_guess/', yr, strFile)
