@@ -375,7 +375,7 @@ db_update = function(db, what, yr, mm, username, password, dwn){
     if(dwn == FALSE){ # if data were not downloaded already, do it now
       dwn = download_and_check(src)
     }
-    if(yr < 2013){
+    if(yr < 2013 | yr > 2018){
       newData = read.table(dwn, skip = 8, sep = "") # Read ascii removing header (first 8 rows)
       prcp = newData[ ,1]
       prcpNew = matrix(prcp, nc=180)
