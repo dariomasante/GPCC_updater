@@ -67,20 +67,27 @@
       yr = as.integer(svalue(yr_txt))
       mm = svalue(mm_sel)
       what = svalue(what_chk)
-      chk = ifelse(svalue(chk_sel) == "Database", 'db', 'nc') 
+      chk = svalue(chk_sel)
       tnc = svalue(target_netcdf)
+      tdb = svalue(target_db)
+      udb = svalue(user_db)
+      pdb = svalue(pass_db)
       if(length(chk) == 0){
-        gmessage("Please select at least one item to update (netcdf or database)")
+        ms = "Please select at least one item to update (netcdf or database)"
+        gmessage(ms); stop(ms)
       }
       if(ticklist[1] %in% chk & nchar(tnc) == 0){ # When netcdf is selected
-        gmessage("Please add the target netcdf to update.")
+        ms = "Please add the target netcdf to update."
+        gmessage(ms); stop(ms)
       }
       if(ticklist[2] %in% chk){ # When database is selected
         if(nchar(tdb) == 0 | nchar(pdb) == 0 | nchar(udb) == 0){
-          gmessage("Please specify database to update, user and password.")
+          ms = "Please specify database to update, user and password."
+          gmessage(ms); stop(ms)
         }
       }
-      GPCC_cmd_update(mm, yr, what, chk, tnc, tdb, udb, pdb)
+      chkShort = ifelse(chk == "Database", 'db', 'nc')
+      GPCC_cmd_update(mm, yr, what, chkShort, tnc, tdb, udb, pdb)
     })
     
     glabel(" ", container = win)
